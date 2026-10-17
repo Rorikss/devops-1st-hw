@@ -1,0 +1,11 @@
+.DS_Store
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.retry
+*.pem
+*.key
+*.pub
+*.vault
+.venv/

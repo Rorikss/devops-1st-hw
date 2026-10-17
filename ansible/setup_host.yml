@@ -1,0 +1,84 @@
+---
+- name: Prepare host for Docker application
+  hosts: app_servers
+  become: true
+
+  vars:
+    deploy_user: deployer
+    docker_users:
+      - student
+      - "{{ deploy_user }}"
+    app_directory: /opt/app
+    docker_packages:
+      - docker.io
+      - docker-compose-v2
+
+  tasks:
+    - name: Install required system packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - sudo
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install Docker and Docker Compose
+      ansible.builtin.apt:
+        name: "{{ docker_packages }}"
+        state: present
+
+    - name: Create deployer user
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        shell: /bin/bash
+        create_home: true
+
+    - name: Add users to Docker group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: docker
+        append: true
+      loop: "{{ docker_users }}"
+
+    - name: Allow deployer to manage Docker without a password
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ deploy_user }}"
+        content: |
+          {{ deploy_user }} ALL=(root) NOPASSWD: /usr/bin/docker
+          {{ deploy_user }} ALL=(root) NOPASSWD: /usr/bin/systemctl start docker, /usr/bin/systemctl stop docker, /usr/bin/systemctl restart docker, /usr/bin/systemctl status docker
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "/usr/sbin/visudo -cf %s"
+
+    - name: Enable and start Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_directory }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Copy Docker Compose project
+      ansible.builtin.copy:
+        src: ../compose/
+        dest: "{{ app_directory }}/"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: preserve
+
+    - name: Copy monitoring script
+      ansible.builtin.copy:
+        src: ../scripts/monitor.sh
+        dest: /usr/local/bin/monitor-service
+        owner: root
+        group: root
+        mode: "0755"
